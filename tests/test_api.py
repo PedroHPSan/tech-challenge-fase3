@@ -49,3 +49,18 @@ def test_metrics_conta_requisicoes_e_latencia(client):
 def test_metrics_nao_cria_serie_para_rota_inexistente(client):
     client.get("/rota-que-nao-existe")
     assert 'path="/rota-que-nao-existe"' not in client.get("/metrics").text
+
+
+def test_predict_com_sinais_clinicos(features_csv_path, tmp_path, monkeypatch):
+    model_path = str(tmp_path / "m.joblib")
+    train_and_save(features_csv_path, model_path)
+    monkeypatch.setattr(api.settings, "model_path", model_path)
+    with TestClient(api.app) as c:
+        so_texto = c.post("/predict", json={"text": "x"})
+        com_sinais = c.post("/predict", json={"text": "x", "hr": 120, "sbp": 120})
+        assert so_texto.status_code == com_sinais.status_code == 200
+        assert so_texto.json()["confidence"] != com_sinais.json()["confidence"]
+
+
+def test_predict_rejeita_sinal_fora_da_faixa(client):
+    assert client.post("/predict", json={"text": "x", "saturation": 140}).status_code == 422
