@@ -19,6 +19,7 @@
 Triagem KTAS de dois pronto-socorros coreanos (Kaggle), com 1.267 pacientes reais. A queixa
 principal é o texto, o nível definido por especialistas vira urgente, atenção ou normal, e
 os sinais medidos na chegada (idade, vitais, dor, consciência) entram como features.
+Fonte: Moon et al., PLOS ONE 2019 (CC BY 4.0, [doi:10.1371/journal.pone.0216972](https://doi.org/10.1371/journal.pone.0216972)), obtido via Kaggle.
 
 | | Só texto | Texto + sinais clínicos (atual) |
 |---|---|---|
@@ -38,6 +39,5 @@ A API continua exigindo só `text`; os sinais são opcionais e ausentes são imp
 
 ## Pendências
 
-- Confirmar a licença do dataset KTAS no Kaggle antes de redistribuir o CSV.
 - Ficamos abaixo das 2.000 amostras sugeridas no enunciado (1.267 linhas).
 - Gravar o vídeo STAR.

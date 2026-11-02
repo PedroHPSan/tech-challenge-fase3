@@ -25,8 +25,17 @@ Docker, com pipeline de CI (GitHub Actions) e DAG de retreino (Airflow).
 | Valores ausentes | saturação 55%, dor 0-10 44%, demais sinais ≤ 2% |
 
 **Limitações em relação ao enunciado:** o enunciado sugere ≥ 2.000 amostras; este
-dataset tem 1.267. O agrupamento dos 5 níveis KTAS em 3 classes é decisão do grupo, e a
-licença do dataset deve ser confirmada na página do Kaggle antes de redistribuir o CSV.
+dataset tem 1.267. O agrupamento dos 5 níveis KTAS em 3 classes é decisão do grupo.
+
+**Fonte e licença:** os dados vêm do estudo de Moon et al., publicado na PLOS ONE sob
+CC BY 4.0, e foram obtidos pelo upload no Kaggle de İlker Yıldız (que não declara
+licença própria e remete ao artigo). Tratamos o CSV sob os termos do artigo, que exigem
+citar os autores. Os prontuários foram anonimizados pelos autores e o estudo foi aprovado
+pelo comitê de ética do hospital.
+
+> Moon SH, Shim JL, Park KS, Park CS. Triage accuracy and causes of mistriage using the
+> Korean Triage and Acuity Scale. PLoS ONE 2019;14(9):e0216972.
+> [doi:10.1371/journal.pone.0216972](https://doi.org/10.1371/journal.pone.0216972)
 
 **Vazamento evitado:** `KTAS_RN` (nível dado pela enfermagem), `Diagnosis in ED`,
 `Disposition` e `mistriage` ficam de fora porque revelam o resultado da triagem. Os
@@ -52,7 +61,7 @@ comparação, só com o texto, para ficarem em pé de igualdade):
 | Linhas | 1.267 (412 queixas únicas) | 2.000 (todas únicas) |
 | Acurácia só com texto, em texto inédito | 0,60 (CV agrupada: 0,55) | 0,71 (CV agrupada: 0,73) |
 | Sinais clínicos | sim (idade, vitais, etc.) | não |
-| Licença | a confirmar | CC BY 4.0 |
+| Licença | CC BY 4.0 (artigo de origem) | CC BY 4.0 |
 
 O KurMed tem mais linhas e métrica maior só com texto, mas a métrica mede a capacidade
 de reproduzir o padrão de um gerador, não uma triagem clínica. Ficamos com o KTAS por ser
