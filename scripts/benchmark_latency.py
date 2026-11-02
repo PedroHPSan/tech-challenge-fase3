@@ -10,10 +10,10 @@ import time
 import httpx
 
 TEXTS = [
-    "Immunotherapy has shown promise in treating metastatic melanoma.",
-    "Insulin therapy remains the cornerstone for type 1 diabetes treatment.",
-    "Angioplasty is often used to restore blood flow in blocked arteries.",
-    "ACE inhibitors are commonly prescribed for essential hypertension.",
+    "chest pain",
+    "fever",
+    "ankle sprain",
+    "abdominal pain, acute",
 ]
 
 
