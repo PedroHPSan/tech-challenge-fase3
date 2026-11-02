@@ -27,3 +27,18 @@ def csv_path(tmp_path):
     path = tmp_path / "data.csv"
     pd.DataFrame(rows, columns=["text", "label"]).to_csv(path, index=False)
     return str(path)
+
+
+@pytest.fixture
+def features_csv_path(tmp_path):
+    """Mesmo dataset, com sinais clínicos (hr e sbp) que variam conforme a classe."""
+    base = {"Cancer": 70, "Diabetes": 85, "Cardiology": 100, "Hypertension": 115}
+    rows = [
+        (t, label, base[label] + i, 120 + i)
+        for label, texts in SAMPLES.items()
+        for t in texts
+        for i in range(5)
+    ]
+    path = tmp_path / "features.csv"
+    pd.DataFrame(rows, columns=["text", "label", "hr", "sbp"]).to_csv(path, index=False)
+    return str(path)

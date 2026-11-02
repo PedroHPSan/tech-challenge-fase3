@@ -3,23 +3,46 @@
 import numpy as np
 import pandas as pd
 
+from src.features import add_derived
+
 REQUIRED_COLUMNS = ("text", "label")
 
 # Dataset KTAS (pronto-socorro coreano): a queixa principal vira o texto e o nível
-# de triagem definido pelos especialistas (1-5) vira a classe de urgência.
+# de triagem definido pelos especialistas (1-5) vira a classe de urgência. Os sinais
+# medidos na chegada do paciente viram features. Ficam de fora KTAS_RN (nível dado pela
+# enfermagem), diagnóstico, destino e erro de triagem, porque revelam o resultado.
 KTAS_TEXT_COLUMN = "Chief_complain"
 KTAS_LABEL_COLUMN = "KTAS_expert"
 KTAS_TO_URGENCY = {1: "urgente", 2: "urgente", 3: "atencao", 4: "normal", 5: "normal"}
+KTAS_FEATURES = {
+    "Age": "age",
+    "Sex": "sex",
+    "Arrival mode": "arrival_mode",
+    "Injury": "injury",
+    "Mental": "mental",
+    "Pain": "pain",
+    "NRS_pain": "nrs_pain",
+    "SBP": "sbp",
+    "DBP": "dbp",
+    "HR": "hr",
+    "RR": "rr",
+    "BT": "bt",
+    "Saturation": "saturation",
+}
 
 
 def _read_ktas(path: str) -> pd.DataFrame:
-    raw = pd.read_csv(
-        path, sep=";", encoding="latin-1", usecols=[KTAS_TEXT_COLUMN, KTAS_LABEL_COLUMN]
-    )
+    wanted = {KTAS_TEXT_COLUMN, KTAS_LABEL_COLUMN, *KTAS_FEATURES}
+    raw = pd.read_csv(path, sep=";", encoding="latin-1", usecols=lambda c: c in wanted)
     level = pd.to_numeric(raw[KTAS_LABEL_COLUMN], errors="coerce")
-    return pd.DataFrame(
+    df = pd.DataFrame(
         {"text": raw[KTAS_TEXT_COLUMN].str.lower(), "label": level.map(KTAS_TO_URGENCY)}
     )
+    for source, name in KTAS_FEATURES.items():
+        if source in raw.columns:
+            # Células com lixo ("??", "#BOÞ!") viram NaN.
+            df[name] = pd.to_numeric(raw[source].astype(str).str.replace(",", "."), errors="coerce")
+    return add_derived(df)
 
 
 def load_dataset(path: str) -> pd.DataFrame:

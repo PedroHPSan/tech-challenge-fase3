@@ -20,9 +20,16 @@ def test_split_nao_vaza_frases(csv_path):
 
 def test_load_dataset_ktas_mapeia_urgencia(tmp_path):
     path = tmp_path / "ktas.csv"
-    path.write_bytes(
-        "Chief_complain;KTAS_expert;Outra\nChest Pain;2;x\nfever;3;x\nrash;5;x\n".encode("latin-1")
-    )
+    linhas = [
+        "Chief_complain;KTAS_expert;HR;SBP;Outra",
+        "Chest Pain;2;100;80;x",
+        "fever;3;??;120;x",
+        "rash;5;70;140;x",
+    ]
+    path.write_bytes("\n".join(linhas).encode("latin-1"))
     df = load_dataset(str(path))
     assert list(df["text"]) == ["chest pain", "fever", "rash"]
     assert list(df["label"]) == ["urgente", "atencao", "normal"]
+    assert df["hr"].isna().tolist() == [False, True, False]  # "??" vira NaN
+    assert round(df["shock_index"].iloc[0], 3) == 1.25
+    assert "Outra" not in df.columns
