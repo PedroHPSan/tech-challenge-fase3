@@ -1,29 +1,40 @@
-# Tech Challenge Fase 3 — Triagem automática de laudos médicos
+# Tech Challenge Fase 3 — Triagem de urgência em pronto-socorro
 
-Serviço de classificação de textos médicos servido por API REST em container
+Serviço que classifica a urgência de um paciente (urgente, atenção ou normal) a partir da
+queixa principal e dos sinais clínicos, servido por API REST em container
 Docker, com pipeline de CI (GitHub Actions) e DAG de retreino (Airflow).
 
 ## Dataset
 
 `data/raw/ktas_triagem_ps.csv`: triagem de dois pronto-socorros coreanos (Kaggle,
 "Emergency Service - Triage Application"). O CSV é o bruto (separador `;`, latin-1) e
-`src/data.py` o converte para `text` e `label`:
+`src/data.py` o converte para o formato do projeto:
 
 - `text`: coluna `Chief_complain` (queixa principal, em minúsculas).
 - `label`: coluna `KTAS_expert` (nível 1-5 definido por especialistas), agrupada em
   **urgente** (1-2), **atenção** (3) e **normal** (4-5).
+- Sinais medidos na chegada (`src/features.py`): idade, sexo, meio de chegada, trauma,
+  nível de consciência, dor (sim/não e 0-10), pressão sistólica e diastólica, frequência
+  cardíaca e respiratória, temperatura, saturação e o índice de choque (FC / PAS).
 
 | Característica | Valor |
 |---|---|
 | Linhas | 1.267 |
 | Classes | normal 534, atenção 487, urgente 246 |
 | Queixas únicas | 412 |
+| Valores ausentes | saturação 55%, dor 0-10 44%, demais sinais ≤ 2% |
 
 **Limitações em relação ao enunciado:** o enunciado sugere ≥ 2.000 amostras; este
 dataset tem 1.267. O agrupamento dos 5 níveis KTAS em 3 classes é decisão do grupo, e a
 licença do dataset deve ser confirmada na página do Kaggle antes de redistribuir o CSV.
-As colunas `KTAS_RN`, `Diagnosis in ED`, `Disposition` e `mistriage` não são usadas como
-entrada porque revelam o resultado da triagem.
+
+**Vazamento evitado:** `KTAS_RN` (nível dado pela enfermagem), `Diagnosis in ED`,
+`Disposition` e `mistriage` ficam de fora porque revelam o resultado da triagem. Os
+sinais vitais são medidos antes da classificação, então podem ser usados.
+
+**Cuidado ao interpretar a métrica:** o KTAS usa sinais vitais e queixa para definir o
+nível. Parte do ganho do modelo com sinais vem de reaprender essa regra, o que é coerente
+com o uso real (a triagem acontece com esses dados), mas não prova ganho clínico.
 
 ### Por que trocamos o dataset
 
@@ -31,20 +42,23 @@ O primeiro dataset (`medical_text_classification_fake_dataset.csv`, 1.000 linhas
 servia ao enunciado: o alvo era a **especialidade** (Cancer, Diabetes, etc.) e não a
 urgência, e só tinha 20 frases únicas repetidas. Em frases inéditas o modelo ficou em
 0,27 de acurácia, abaixo do acaso (0,25). Procuramos alternativas no Hugging Face, no
-Kaggle e no PhysioNet e comparamos as duas que cumpriam o alvo de urgência:
+Kaggle e no PhysioNet e comparamos as duas que cumpriam o alvo de urgência (nesta
+comparação, só com o texto, para ficarem em pé de igualdade):
 
 | | KTAS (adotado) | KurMed-Triage (inglês) |
 |---|---|---|
 | Origem | pacientes reais de dois pronto-socorros | gerado por LLM (Gemini), sem revisão médica |
 | Rótulo | nível definido por especialistas | urgência atribuída na geração |
 | Linhas | 1.267 (412 queixas únicas) | 2.000 (todas únicas) |
-| Acurácia em texto inédito | 0,60 (CV agrupada: 0,55) | 0,71 (CV agrupada: 0,73) |
+| Acurácia só com texto, em texto inédito | 0,60 (CV agrupada: 0,55) | 0,71 (CV agrupada: 0,73) |
+| Sinais clínicos | sim (idade, vitais, etc.) | não |
 | Licença | a confirmar | CC BY 4.0 |
 
-O KurMed tem mais linhas e métrica maior, mas a métrica mede a capacidade de reproduzir
-o padrão de um gerador, não uma triagem clínica. Ficamos com o KTAS por ser dado real
-com rótulo de especialistas, e deixamos o KurMed como comparação. Ter ≥ 2.000 amostras reais exigiria credenciamento no
-PhysioNet (MIMIC-IV-ED), que fica como evolução.
+O KurMed tem mais linhas e métrica maior só com texto, mas a métrica mede a capacidade
+de reproduzir o padrão de um gerador, não uma triagem clínica. Ficamos com o KTAS por ser
+dado real com rótulo de especialistas e por trazer os sinais vitais, e deixamos o KurMed
+como comparação. Ter ≥ 2.000 amostras reais exigiria credenciamento no PhysioNet
+(MIMIC-IV-ED), que fica como evolução.
 
 ### Avaliação sem vazamento
 
@@ -53,15 +67,35 @@ classe). Em `src/data.py` separamos queixas inteiras (20% das únicas de cada cl
 o teste, e a validação cruzada agrupa por queixa. Resultado atual
 (`python -m src.train`):
 
-| Métrica | Valor |
-|---|---|
-| Acurácia em queixas inéditas (82 queixas) | 0,60 |
-| F1 macro em queixas inéditas | 0,52 |
-| Acurácia média na validação cruzada agrupada (5 folds) | 0,55 |
-| Referência (classe mais frequente) | 0,42 |
+| Métrica | Só texto | Texto + sinais clínicos (atual) |
+|---|---|---|
+| Acurácia em queixas inéditas (82 queixas) | 0,60 | **0,75** |
+| F1 macro em queixas inéditas | 0,52 | **0,74** |
+| Acurácia média na validação cruzada agrupada (5 folds) | 0,55 | **0,68** |
+| Referência (classe mais frequente) | 0,42 | 0,42 |
 
-O modelo usa só o texto curto da queixa (sem sinais vitais), então o teto é limitado.
-Combinar com sinais vitais e idade seria o principal ponto de melhoria.
+### Como escolhemos o método
+
+Testamos alternativas com validação cruzada agrupada por queixa (5 folds, repetida 3
+vezes com sementes diferentes). Valores são acurácia / F1 macro:
+
+| Abordagem | Acurácia | F1 macro |
+|---|---|---|
+| TF-IDF de palavras + regressão logística (versão anterior) | 0,575 | 0,546 |
+| TF-IDF de palavras e caracteres + regressão logística | 0,593 | 0,576 |
+| TF-IDF de palavras e caracteres + LinearSVC | 0,594 | 0,572 |
+| TF-IDF de palavras + Naive Bayes | 0,586 | 0,583 |
+| Só sinais clínicos, Random Forest | 0,626 | 0,606 |
+| Só sinais clínicos, gradient boosting | 0,607 | 0,589 |
+| Empilhar texto (regressão) + sinais (gradient boosting) | 0,633 | 0,617 |
+| **Texto + sinais em um único modelo linear (adotado)** | **0,68** | **0,67** |
+
+Melhorar só o texto rende cerca de 2 pontos, porque a queixa é curta (poucas palavras).
+Os sinais clínicos trazem informação que o texto não tem, e o modelo único com texto e
+sinais superou até os modelos mais complexos. Ficamos com a regressão logística porque:
+(1) converte para ONNX sem perda (100% de concordância de rótulos), o que mantém a
+otimização de latência da Etapa 4; (2) é pequena (~37 KB); (3) tolera sinais ausentes,
+preenchidos pela mediana do treino dentro do próprio modelo.
 
 ## Estrutura do projeto
 
@@ -70,7 +104,8 @@ Combinar com sinais vitais e idade seria o principal ponto de melhoria.
 ├── src/
 │   ├── config.py        # configuração via .env
 │   ├── data.py          # carga, validação e split sem vazamento
-│   ├── train.py         # TF-IDF + modelo, avaliação, salvamento e export ONNX
+│   ├── features.py      # sinais clínicos e índice de choque
+│   ├── train.py         # TF-IDF + sinais clínicos, avaliação, salvamento e export ONNX
 │   ├── pipeline.py      # etapas ingestão/treino usadas pela DAG
 │   └── api.py           # API FastAPI (/health, /predict e /metrics)
 ├── dags/retrain_dag.py  # DAG do Airflow
@@ -95,13 +130,18 @@ poetry run python -m src.train          # gera models/model.joblib e models/mode
 poetry run uvicorn src.api:app --reload # API em http://localhost:8000/docs
 ```
 
-Exemplo de chamada:
+Exemplo de chamada (só `text` é obrigatório; os sinais clínicos são opcionais):
 
 ```bash
 curl -X POST localhost:8000/predict -H 'content-type: application/json' \
-  -d '{"text": "chest pain"}'
-# {"label":"urgente","confidence":0.9111,"latency_ms":0.038}
+  -d '{"text": "chest pain", "age": 58, "hr": 110, "sbp": 95, "saturation": 92}'
+# {"label":"urgente","confidence":0.986,"latency_ms":0.962}
 ```
+
+Campos aceitos além de `text`: `age`, `sex`, `arrival_mode`, `injury`, `mental`, `pain`,
+`nrs_pain`, `sbp`, `dbp`, `hr`, `rr`, `bt` e `saturation` (faixas e códigos em
+`/docs`). O que faltar é preenchido pela mediana do treino, e o índice de choque
+(FC / PAS) é calculado pela própria API.
 
 ### Docker
 
@@ -114,63 +154,64 @@ O modelo é treinado durante o build, então a imagem já sobe pronta.
 
 ## Baseline de latência (local, container Docker)
 
-Medido com `poetry run python -m scripts.benchmark_latency` (200 requisições
-sequenciais a `localhost:8000`, após aquecimento), em um MacBook com Docker Desktop:
+O ponto de comparação da Etapa 4 é a API servindo o pipeline scikit-learn (joblib).
+Medido com `poetry run python -m scripts.benchmark_latency --n 1000` contra o container,
+em um MacBook com Docker Desktop. As requisições alternam pacientes com e sem sinais
+clínicos, e a medição vem após aquecimento:
 
 | Métrica | Tempo |
 |---|---|
-| Média | 1,07 ms |
-| p50 | 1,03 ms |
-| p95 | 1,37 ms |
-| Máximo | 3,18 ms |
-
-É o ponto de comparação para a otimização da Etapa 4.
+| Média | 3,23 ms |
+| p50 | 3,08 ms |
+| p95 | 4,15 ms |
 
 ## Otimização de latência (ONNX Runtime)
 
-Ao fim do treino, `src/train.py` converte o pipeline (TF-IDF + regressão logística)
-para ONNX com `skl2onnx` e grava `models/model.onnx` ao lado do `model.joblib`. A API
-carrega o `.onnx` e faz a inferência com o **ONNX Runtime**. O pipeline scikit-learn
-continua salvo para comparação.
+Ao fim do treino, `src/train.py` converte o pipeline (TF-IDF + sinais + regressão
+logística) para ONNX com `skl2onnx` e grava `models/model.onnx` ao lado do
+`model.joblib`. A API carrega o `.onnx` e faz a inferência com o **ONNX Runtime**. O
+pipeline scikit-learn continua salvo para comparação.
 
 Por que ONNX: o scikit-learn passa por várias camadas Python a cada chamada (validação,
-vetorização, matriz esparsa). O ONNX Runtime executa o mesmo grafo em C++ numa única
-chamada. Quantização e pruning dariam pouco ganho aqui, porque o modelo já é pequeno (~35 KB com o dataset atual).
+vetorização, matriz esparsa, imputação). O ONNX Runtime executa o mesmo grafo em C++ numa
+única chamada. Quantização e pruning dariam pouco ganho aqui, porque o modelo já é
+pequeno (~32 KB).
 
-Dois detalhes da conversão:
+Detalhes da conversão:
 
 - `zipmap=False`: as probabilidades saem como tensor, e não como lista de dicionários;
 - `locale="C"` no TF-IDF: o operador que converte para minúsculas usa `en_US.UTF-8` por
-  padrão, e esse locale não existe na imagem `python:3.11-slim`.
+  padrão, e esse locale não existe na imagem `python:3.11-slim`;
+- o grafo tem uma entrada `text` e uma entrada float por sinal clínico. Sinal ausente
+  entra como NaN e é preenchido pela mediana do treino dentro do grafo.
 
-### Resultados (mesma máquina Linux, 2026-11-02)
+### Resultados (MacBook, 2026-11-02, modelo com texto + sinais clínicos)
 
-**Só o modelo** (`poetry run python -m scripts.compare_latency --n 2000`, 1 texto por chamada):
+**Só o modelo** (`poetry run python -m scripts.compare_latency --n 3000`, 1 paciente por
+chamada, entradas já montadas):
 
 | Modelo | Média | p50 | p95 | Tamanho |
 |---|---|---|---|---|
-| scikit-learn (joblib) | 1,103 ms | 1,045 ms | 1,415 ms | 18 KB |
-| ONNX Runtime | **0,040 ms** | **0,037 ms** | **0,071 ms** | 14 KB |
+| scikit-learn (joblib) | 1,115 ms | 1,056 ms | 1,391 ms | 37 KB |
+| ONNX Runtime | **0,033 ms** | **0,033 ms** | **0,036 ms** | 32 KB |
 
-> Os números desta seção foram medidos com o dataset anterior (modelo de 18 KB). Com o
-> dataset KTAS, `scripts.compare_latency --n 2000` no MacBook deu 0,212 ms (scikit-learn)
-> contra 0,011 ms (ONNX), com 100% de concordância de rótulos e modelos de 34 KB e 28 KB.
+Ganho de **~34x** na média, com 100% de concordância de rótulos nos pacientes do
+dataset. As probabilidades diferem em até ~0,01 porque a tokenização do ONNX não é
+idêntica à do scikit-learn. Testes em `tests/test_train.py` garantem os mesmos rótulos.
 
-Ganho de **~27x** na média, com 100% de concordância de rótulos nas frases do dataset. As
-probabilidades diferem em até ~0,01 porque a tokenização do ONNX não é idêntica à do
-scikit-learn. Um teste em `tests/test_train.py` garante os mesmos rótulos.
-
-**API ponta a ponta em Docker** (`scripts.benchmark_latency --n 1000`, imagem antes e
-depois da mudança):
+**API ponta a ponta em Docker** (`scripts.benchmark_latency --n 1000`, mesma máquina e
+mesmo container, trocando só o backend do modelo):
 
 | API | Média | p50 | p95 |
 |---|---|---|---|
-| scikit-learn | 4,05 ms | 3,91 ms | 4,86 ms |
-| ONNX Runtime | **2,83 ms** | **2,64 ms** | **3,40 ms** |
+| scikit-learn | 3,23 ms | 3,08 ms | 4,15 ms |
+| ONNX Runtime | **1,13 ms** | **1,04 ms** | **1,70 ms** |
 
-Na API o ganho é de ~30%. O modelo passou de ~1 ms para ~0,04 ms, e o tempo que sobra
-vem de HTTP, validação do FastAPI e métricas. O baseline da seção anterior (1,07 ms) foi
-medido em outra máquina (MacBook) e não deve ser comparado diretamente com estes números.
+Na API o ganho é de ~65% (cerca de 2,9x). O modelo passou de ~1,1 ms para ~0,03 ms, e o
+tempo que sobra vem de HTTP, validação do FastAPI e métricas. Há variação entre rodadas:
+em quatro rodadas o scikit-learn ficou entre 3,06 e 3,82 ms e o ONNX entre 1,13 e 1,35 ms.
+Os números anteriores a esta versão (modelo só com texto, outra máquina) não são
+comparáveis com estes.
 
 ## CI (GitHub Actions)
 
@@ -266,7 +307,7 @@ caminho da requisição, e publica um novo artefato de modelo.
 | Orquestração do retreino | MWAA (Airflow gerenciado) ou a DAG deste repositório em container | Cloud Composer |
 | Métricas e logs | CloudWatch + Prometheus/Grafana | Azure Monitor / Cloud Monitoring |
 
-**Por que não GPU nem serverless por função:** o modelo roda em CPU em ~0,04 ms (ONNX), então GPU
+**Por que não GPU nem serverless por função:** o modelo roda em CPU em ~0,03 ms (ONNX), então GPU
 não compensa o custo. Funções sob demanda (Lambda) sofreriam com *cold start* num
 fluxo clínico.
 

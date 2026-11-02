@@ -14,16 +14,30 @@
 | 4. Otimização de latência (ONNX) | Concluída |
 | 4. Vídeo STAR | Pendente |
 
-## Dataset
+## Dataset e método
 
 Triagem KTAS de dois pronto-socorros coreanos (Kaggle), com 1.267 pacientes reais. A queixa
-principal é o texto e o nível definido por especialistas vira urgente, atenção ou normal.
-Em queixas inéditas o modelo chega a 0,60 de acurácia (classe mais frequente: 0,42). O
-README explica por que trocamos o dataset anterior e como comparamos com o KurMed.
+principal é o texto, o nível definido por especialistas vira urgente, atenção ou normal, e
+os sinais medidos na chegada (idade, vitais, dor, consciência) entram como features.
+
+| | Só texto | Texto + sinais clínicos (atual) |
+|---|---|---|
+| Acurácia em queixas inéditas | 0,60 | **0,75** |
+| F1 macro em queixas inéditas | 0,52 | **0,74** |
+| Validação cruzada agrupada | 0,55 | **0,68** |
+
+Comparamos 8 abordagens (README) e a regressão logística com texto + sinais foi a melhor.
+A API continua exigindo só `text`; os sinais são opcionais e ausentes são imputados.
+
+## Latência (MacBook, Docker, 2026-11-02)
+
+| | scikit-learn | ONNX Runtime |
+|---|---|---|
+| Só o modelo (média) | 1,115 ms | 0,033 ms |
+| API ponta a ponta (média / p95) | 3,23 / 4,15 ms | 1,13 / 1,70 ms |
 
 ## Pendências
 
 - Confirmar a licença do dataset KTAS no Kaggle antes de redistribuir o CSV.
 - Ficamos abaixo das 2.000 amostras sugeridas no enunciado (1.267 linhas).
-- Atualizar as tabelas de latência do README com o dataset novo.
 - Gravar o vídeo STAR.
