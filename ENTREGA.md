@@ -39,5 +39,5 @@ A API continua exigindo só `text`; os sinais são opcionais e ausentes são imp
 
 ## Pendências
 
-- Ficamos abaixo das 2.000 amostras sugeridas no enunciado (1.267 linhas).
-- Gravar o vídeo STAR.
+- Ficamos abaixo das 2.000 amostras sugeridas no enunciado (1.267 linhas): #3.
+- Gravar o vídeo STAR: #2.
