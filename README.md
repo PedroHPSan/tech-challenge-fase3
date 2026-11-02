@@ -5,42 +5,68 @@ Docker, com pipeline de CI (GitHub Actions) e DAG de retreino (Airflow).
 
 ## Dataset
 
-`data/raw/medical_text_classification_fake_dataset.csv`: colunas `text` e `label`.
+`data/raw/ktas_triagem_ps.csv`: triagem de dois pronto-socorros coreanos (Kaggle,
+"Emergency Service - Triage Application"). O CSV é o bruto (separador `;`, latin-1) e
+`src/data.py` o converte para `text` e `label`:
+
+- `text`: coluna `Chief_complain` (queixa principal, em minúsculas).
+- `label`: coluna `KTAS_expert` (nível 1-5 definido por especialistas), agrupada em
+  **urgente** (1-2), **atenção** (3) e **normal** (4-5).
 
 | Característica | Valor |
 |---|---|
-| Linhas | 1.000 |
-| Classes | Cancer, Diabetes, Cardiology, Hypertension (250 cada) |
-| Frases únicas | **20** (5 por classe, repetidas várias vezes) |
+| Linhas | 1.267 |
+| Classes | normal 534, atenção 487, urgente 246 |
+| Queixas únicas | 412 |
 
-**Limitações em relação ao enunciado:** o enunciado sugere ≥ 2.000 amostras e uma
-classe de urgência (normal / atenção / urgente). Este dataset tem 1.000 linhas e o
-alvo é a **especialidade** do texto. Não criamos um mapeamento especialidade → urgência
-porque ele não teria base clínica. Para trocar o alvo por urgência basta fornecer um CSV
-com as mesmas colunas (`text`, `label`) e apontar `DATA_PATH` para ele.
+**Limitações em relação ao enunciado:** o enunciado sugere ≥ 2.000 amostras; este
+dataset tem 1.267. O agrupamento dos 5 níveis KTAS em 3 classes é decisão do grupo, e a
+licença do dataset deve ser confirmada na página do Kaggle antes de redistribuir o CSV.
+As colunas `KTAS_RN`, `Diagnosis in ED`, `Disposition` e `mistriage` não são usadas como
+entrada porque revelam o resultado da triagem.
+
+### Por que trocamos o dataset
+
+O primeiro dataset (`medical_text_classification_fake_dataset.csv`, 1.000 linhas) não
+servia ao enunciado: o alvo era a **especialidade** (Cancer, Diabetes, etc.) e não a
+urgência, e só tinha 20 frases únicas repetidas. Em frases inéditas o modelo ficou em
+0,27 de acurácia, abaixo do acaso (0,25). Procuramos alternativas no Hugging Face, no
+Kaggle e no PhysioNet e comparamos as duas que cumpriam o alvo de urgência:
+
+| | KTAS (adotado) | KurMed-Triage (inglês) |
+|---|---|---|
+| Origem | pacientes reais de dois pronto-socorros | gerado por LLM (Gemini), sem revisão médica |
+| Rótulo | nível definido por especialistas | urgência atribuída na geração |
+| Linhas | 1.267 (412 queixas únicas) | 2.000 (todas únicas) |
+| Acurácia em texto inédito | 0,60 (CV agrupada: 0,55) | 0,71 (CV agrupada: 0,73) |
+| Licença | a confirmar | CC BY 4.0 |
+
+O KurMed tem mais linhas e métrica maior, mas a métrica mede a capacidade de reproduzir
+o padrão de um gerador, não uma triagem clínica. Ficamos com o KTAS por ser dado real
+com rótulo de especialistas, e deixamos o KurMed como comparação. Ter ≥ 2.000 amostras reais exigiria credenciamento no
+PhysioNet (MIMIC-IV-ED), que fica como evolução.
 
 ### Avaliação sem vazamento
 
-Como só existem 20 frases únicas, um split aleatório coloca a mesma frase no treino e no
-teste. Nesse caso a acurácia chega a **100%**, sem medir generalização. Em `src/data.py`
-separamos frases inteiras (1 por classe) para o teste, e a validação cruzada agrupa por
-frase. Resultado atual (`python -m src.train`):
+A mesma queixa se repete em várias linhas (e 106 das 412 aparecem com mais de uma
+classe). Em `src/data.py` separamos queixas inteiras (20% das únicas de cada classe) para
+o teste, e a validação cruzada agrupa por queixa. Resultado atual
+(`python -m src.train`):
 
 | Métrica | Valor |
 |---|---|
-| Acurácia em frases inéditas (4 frases) | 0,27 |
-| F1 macro em frases inéditas | 0,17 |
-| Acurácia média na validação cruzada agrupada (5 folds) | 0,39 |
-| Referência (acaso, 4 classes) | 0,25 |
+| Acurácia em queixas inéditas (82 queixas) | 0,60 |
+| F1 macro em queixas inéditas | 0,52 |
+| Acurácia média na validação cruzada agrupada (5 folds) | 0,55 |
+| Referência (classe mais frequente) | 0,42 |
 
-O modelo só reconhece as frases que viu no treino. Com 5 frases por classe, não há
-vocabulário suficiente para generalizar. Um dataset maior e mais variado é o principal
-ponto de melhoria do projeto.
+O modelo usa só o texto curto da queixa (sem sinais vitais), então o teto é limitado.
+Combinar com sinais vitais e idade seria o principal ponto de melhoria.
 
 ## Estrutura do projeto
 
 ```
-├── data/raw/            # dataset (CSV versionado, 80 KB)
+├── data/raw/            # dataset KTAS (CSV versionado, 126 KB)
 ├── src/
 │   ├── config.py        # configuração via .env
 │   ├── data.py          # carga, validação e split sem vazamento
@@ -73,8 +99,8 @@ Exemplo de chamada:
 
 ```bash
 curl -X POST localhost:8000/predict -H 'content-type: application/json' \
-  -d '{"text": "Insulin therapy remains the cornerstone for type 1 diabetes treatment."}'
-# {"label":"Diabetes","confidence":0.9348,"latency_ms":0.181}
+  -d '{"text": "chest pain"}'
+# {"label":"urgente","confidence":0.9111,"latency_ms":0.038}
 ```
 
 ### Docker
@@ -109,7 +135,7 @@ continua salvo para comparação.
 
 Por que ONNX: o scikit-learn passa por várias camadas Python a cada chamada (validação,
 vetorização, matriz esparsa). O ONNX Runtime executa o mesmo grafo em C++ numa única
-chamada. Quantização e pruning dariam pouco ganho aqui, porque o modelo já é pequeno (18 KB).
+chamada. Quantização e pruning dariam pouco ganho aqui, porque o modelo já é pequeno (~35 KB com o dataset atual).
 
 Dois detalhes da conversão:
 
@@ -125,6 +151,10 @@ Dois detalhes da conversão:
 |---|---|---|---|---|
 | scikit-learn (joblib) | 1,103 ms | 1,045 ms | 1,415 ms | 18 KB |
 | ONNX Runtime | **0,040 ms** | **0,037 ms** | **0,071 ms** | 14 KB |
+
+> Os números desta seção foram medidos com o dataset anterior (modelo de 18 KB). Com o
+> dataset KTAS, `scripts.compare_latency --n 2000` no MacBook deu 0,212 ms (scikit-learn)
+> contra 0,011 ms (ONNX), com 100% de concordância de rótulos e modelos de 34 KB e 28 KB.
 
 Ganho de **~27x** na média, com 100% de concordância de rótulos nas frases do dataset. As
 probabilidades diferem em até ~0,01 porque a tokenização do ONNX não é idêntica à do
