@@ -44,13 +44,15 @@ ponto de melhoria do projeto.
 ├── src/
 │   ├── config.py        # configuração via .env
 │   ├── data.py          # carga, validação e split sem vazamento
-│   ├── train.py         # TF-IDF + modelo, avaliação e salvamento
+│   ├── train.py         # TF-IDF + modelo, avaliação, salvamento e export ONNX
 │   ├── pipeline.py      # etapas ingestão/treino usadas pela DAG
 │   └── api.py           # API FastAPI (/health, /predict e /metrics)
 ├── dags/retrain_dag.py  # DAG do Airflow
 ├── monitoring/          # Prometheus e Grafana (datasource + dashboard provisionados)
 ├── docker-compose.yml   # API + Prometheus + Grafana
-├── scripts/benchmark_latency.py
+├── scripts/
+│   ├── benchmark_latency.py  # latência da API via HTTP
+│   └── compare_latency.py    # scikit-learn x ONNX Runtime (só o modelo)
 ├── tests/               # pytest
 ├── .github/workflows/ci.yml
 └── Dockerfile
@@ -63,7 +65,7 @@ Pré-requisitos: Python 3.11+, [Poetry](https://python-poetry.org/) e Docker.
 ```bash
 poetry install
 cp .env.example .env
-poetry run python -m src.train          # gera models/model.joblib
+poetry run python -m src.train          # gera models/model.joblib e models/model.onnx
 poetry run uvicorn src.api:app --reload # API em http://localhost:8000/docs
 ```
 
@@ -72,7 +74,7 @@ Exemplo de chamada:
 ```bash
 curl -X POST localhost:8000/predict -H 'content-type: application/json' \
   -d '{"text": "Insulin therapy remains the cornerstone for type 1 diabetes treatment."}'
-# {"label":"Diabetes","confidence":0.9482,"latency_ms":6.939}
+# {"label":"Diabetes","confidence":0.9348,"latency_ms":0.181}
 ```
 
 ### Docker
@@ -97,6 +99,48 @@ sequenciais a `localhost:8000`, após aquecimento), em um MacBook com Docker Des
 | Máximo | 3,18 ms |
 
 É o ponto de comparação para a otimização da Etapa 4.
+
+## Otimização de latência (ONNX Runtime)
+
+Ao fim do treino, `src/train.py` converte o pipeline (TF-IDF + regressão logística)
+para ONNX com `skl2onnx` e grava `models/model.onnx` ao lado do `model.joblib`. A API
+carrega o `.onnx` e faz a inferência com o **ONNX Runtime**. O pipeline scikit-learn
+continua salvo para comparação.
+
+Por que ONNX: o scikit-learn passa por várias camadas Python a cada chamada (validação,
+vetorização, matriz esparsa). O ONNX Runtime executa o mesmo grafo em C++ numa única
+chamada. Quantização e pruning dariam pouco ganho aqui, porque o modelo já é pequeno (18 KB).
+
+Dois detalhes da conversão:
+
+- `zipmap=False`: as probabilidades saem como tensor, e não como lista de dicionários;
+- `locale="C"` no TF-IDF: o operador que converte para minúsculas usa `en_US.UTF-8` por
+  padrão, e esse locale não existe na imagem `python:3.11-slim`.
+
+### Resultados (mesma máquina Linux, 2026-11-02)
+
+**Só o modelo** (`poetry run python -m scripts.compare_latency --n 2000`, 1 texto por chamada):
+
+| Modelo | Média | p50 | p95 | Tamanho |
+|---|---|---|---|---|
+| scikit-learn (joblib) | 1,103 ms | 1,045 ms | 1,415 ms | 18 KB |
+| ONNX Runtime | **0,040 ms** | **0,037 ms** | **0,071 ms** | 14 KB |
+
+Ganho de **~27x** na média, com 100% de concordância de rótulos nas frases do dataset. As
+probabilidades diferem em até ~0,01 porque a tokenização do ONNX não é idêntica à do
+scikit-learn. Um teste em `tests/test_train.py` garante os mesmos rótulos.
+
+**API ponta a ponta em Docker** (`scripts.benchmark_latency --n 1000`, imagem antes e
+depois da mudança):
+
+| API | Média | p50 | p95 |
+|---|---|---|---|
+| scikit-learn | 4,05 ms | 3,91 ms | 4,86 ms |
+| ONNX Runtime | **2,83 ms** | **2,64 ms** | **3,40 ms** |
+
+Na API o ganho é de ~30%. O modelo passou de ~1 ms para ~0,04 ms, e o tempo que sobra
+vem de HTTP, validação do FastAPI e métricas. O baseline da seção anterior (1,07 ms) foi
+medido em outra máquina (MacBook) e não deve ser comparado diretamente com estes números.
 
 ## CI (GitHub Actions)
 
@@ -192,7 +236,7 @@ caminho da requisição, e publica um novo artefato de modelo.
 | Orquestração do retreino | MWAA (Airflow gerenciado) ou a DAG deste repositório em container | Cloud Composer |
 | Métricas e logs | CloudWatch + Prometheus/Grafana | Azure Monitor / Cloud Monitoring |
 
-**Por que não GPU nem serverless por função:** o modelo roda em CPU em ~1 ms, então GPU
+**Por que não GPU nem serverless por função:** o modelo roda em CPU em ~0,04 ms (ONNX), então GPU
 não compensa o custo. Funções sob demanda (Lambda) sofreriam com *cold start* num
 fluxo clínico.
 

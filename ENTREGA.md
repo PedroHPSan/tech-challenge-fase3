@@ -11,4 +11,5 @@
 | 1. Arquitetura e API em Docker | Concluída |
 | 2. CI/CD e DAG Airflow | Concluída |
 | 3. Monitoramento (Prometheus + Grafana) | Concluída |
-| 4. Otimização de latência e vídeo | Pendente |
+| 4. Otimização de latência (ONNX) | Concluída |
+| 4. Vídeo STAR | Pendente |

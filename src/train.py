@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 
 import joblib
+import numpy as np
+import onnxruntime as ort
 import pandas as pd
+from skl2onnx import to_onnx
+from skl2onnx.common.data_types import StringTensorType
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -33,6 +37,28 @@ def evaluate(pipe: Pipeline, test: pd.DataFrame) -> dict[str, float]:
         "accuracy": float(accuracy_score(test["label"], pred)),
         "f1_macro": float(f1_score(test["label"], pred, average="macro")),
     }
+
+
+def export_onnx(pipe: Pipeline, path: str) -> None:
+    """Converte o pipeline treinado para ONNX (inferência mais rápida no ONNX Runtime)."""
+    options = {
+        # locale "C": a imagem slim não tem en_US.UTF-8, padrão do StringNormalizer.
+        id(pipe.named_steps["tfidf"]): {"locale": "C"},
+        # Probabilidades como tensor (sem ZipMap), mais rápido de ler.
+        id(pipe.named_steps["clf"]): {"zipmap": False},
+    }
+    onx = to_onnx(pipe, initial_types=[("text", StringTensorType([None, 1]))], options=options)
+    Path(path).write_bytes(onx.SerializeToString())
+
+
+def load_onnx(path: str) -> ort.InferenceSession:
+    return ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+
+
+def predict_onnx(session: ort.InferenceSession, texts: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """Devolve (rótulos, probabilidades por classe) para uma lista de textos."""
+    labels, proba = session.run(None, {"text": np.array(texts, dtype=object).reshape(-1, 1)})
+    return labels, proba
 
 
 def train_and_save(
@@ -72,6 +98,7 @@ def train_and_save(
     pipe.fit(df["text"], df["label"])
     Path(model_path).parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipe, model_path)
+    export_onnx(pipe, str(Path(model_path).with_suffix(".onnx")))
     return metrics
 
 

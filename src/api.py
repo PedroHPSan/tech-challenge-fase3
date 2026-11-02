@@ -4,12 +4,12 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import joblib
 from fastapi import FastAPI, HTTPException, Request
 from prometheus_client import Counter, Histogram, make_asgi_app
 from pydantic import BaseModel, Field
 
 from src.config import settings
+from src.train import load_onnx, predict_onnx
 
 REQUESTS = Counter(
     "http_requests_total", "Requisições HTTP recebidas", ["method", "path", "status"]
@@ -35,8 +35,9 @@ class PredictResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    path = Path(settings.model_path)
-    app.state.model = joblib.load(path) if path.exists() else None
+    # Serve a versão ONNX do modelo (Etapa 4: menor latência que o pipeline scikit-learn).
+    path = Path(settings.model_path).with_suffix(".onnx")
+    app.state.model = load_onnx(str(path)) if path.exists() else None
     yield
 
 
@@ -68,12 +69,11 @@ def predict(req: PredictRequest) -> PredictResponse:
     if model is None:
         raise HTTPException(status_code=503, detail="Modelo não carregado.")
     start = time.perf_counter()
-    proba = model.predict_proba([req.text])[0]
-    idx = int(proba.argmax())
-    label = str(model.classes_[idx])
+    labels, proba = predict_onnx(model, [req.text])
+    label = str(labels[0])
     PREDICTIONS.labels(label).inc()
     return PredictResponse(
         label=label,
-        confidence=round(float(proba[idx]), 4),
+        confidence=round(float(proba[0].max()), 4),
         latency_ms=round((time.perf_counter() - start) * 1000, 3),
     )

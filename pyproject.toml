@@ -16,6 +16,8 @@ uvicorn = { version = ">=0.29", extras = ["standard"] }
 pydantic-settings = ">=2.4"
 httpx = ">=0.27"
 prometheus-client = ">=0.20"
+skl2onnx = ">=1.17"
+onnxruntime = ">=1.18"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"
