@@ -6,6 +6,6 @@ __pycache__/
 .venv/
 .DS_Store
 /models/
-/Docs/
 /Dataset/
 poetry.toml
+*.pdf
