@@ -46,8 +46,10 @@ ponto de melhoria do projeto.
 │   ├── data.py          # carga, validação e split sem vazamento
 │   ├── train.py         # TF-IDF + modelo, avaliação e salvamento
 │   ├── pipeline.py      # etapas ingestão/treino usadas pela DAG
-│   └── api.py           # API FastAPI (/health e /predict)
+│   └── api.py           # API FastAPI (/health, /predict e /metrics)
 ├── dags/retrain_dag.py  # DAG do Airflow
+├── monitoring/          # Prometheus e Grafana (datasource + dashboard provisionados)
+├── docker-compose.yml   # API + Prometheus + Grafana
 ├── scripts/benchmark_latency.py
 ├── tests/               # pytest
 ├── .github/workflows/ci.yml
@@ -106,6 +108,45 @@ encadeados: **lint** (`ruff check` e `ruff format --check`) → **test** (`pytes
 poetry run ruff check . && poetry run ruff format --check .
 poetry run pytest
 ```
+
+## Monitoramento (Prometheus + Grafana)
+
+A API usa `prometheus_client` e expõe as métricas em `/metrics`:
+
+| Métrica | Tipo | Rótulos |
+|---|---|---|
+| `http_requests_total` | Counter | `method`, `path`, `status` |
+| `http_request_duration_seconds` | Histogram | `method`, `path` |
+| `predictions_total` | Counter | `label` (classe prevista) |
+
+O rótulo `path` usa o template da rota (ex.: `/predict`). URLs desconhecidas viram
+`other`, para não criar uma série por URL.
+
+Para subir a stack completa:
+
+```bash
+docker compose up -d --build
+poetry run python -m scripts.benchmark_latency --n 1000   # gera tráfego
+```
+
+| Serviço | Endereço |
+|---|---|
+| API | http://localhost:8000/docs |
+| Prometheus | http://localhost:9090 (coleta a API a cada 5 s) |
+| Grafana | http://localhost:3000 (admin/admin; leitura anônima liberada) |
+
+O Grafana já sobe com o datasource e o dashboard **Triagem de laudos — API**
+provisionados (`monitoring/grafana/dashboards/triagem-api.json`). Painéis:
+
+1. Total de requisições em `/predict`;
+2. Taxa de erro em `/predict` (respostas 4xx/5xx, em %);
+3. Requisições por segundo, por status;
+4. Latência de `/predict` (p50, p95 e p99 do histograma);
+5. Predições por classe.
+
+![Dashboard Grafana](docs/grafana-dashboard.jpg)
+
+Para encerrar: `docker compose down`.
 
 ## Orquestração (Airflow)
 

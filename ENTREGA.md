@@ -10,5 +10,5 @@
 |---|---|
 | 1. Arquitetura e API em Docker | Concluída |
 | 2. CI/CD e DAG Airflow | Concluída |
-| 3. Monitoramento (Prometheus + Grafana) | Pendente |
+| 3. Monitoramento (Prometheus + Grafana) | Concluída |
 | 4. Otimização de latência e vídeo | Pendente |

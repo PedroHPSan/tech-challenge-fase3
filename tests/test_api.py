@@ -34,3 +34,18 @@ def test_predict_sem_modelo_retorna_503(monkeypatch, tmp_path):
     monkeypatch.setattr(api.settings, "model_path", str(tmp_path / "nao_existe.joblib"))
     with TestClient(api.app) as c:
         assert c.post("/predict", json={"text": "x"}).status_code == 503
+
+
+def test_metrics_conta_requisicoes_e_latencia(client):
+    client.post("/predict", json={"text": "Insulin therapy for diabetes"})
+    client.post("/predict", json={"text": ""})
+    body = client.get("/metrics").text
+    assert 'http_requests_total{method="POST",path="/predict",status="200"}' in body
+    assert 'http_requests_total{method="POST",path="/predict",status="422"}' in body
+    assert 'http_request_duration_seconds_bucket{le="0.005",method="POST",path="/predict"}' in body
+    assert 'predictions_total{label="Diabetes"}' in body
+
+
+def test_metrics_nao_cria_serie_para_rota_inexistente(client):
+    client.get("/rota-que-nao-existe")
+    assert 'path="/rota-que-nao-existe"' not in client.get("/metrics").text
