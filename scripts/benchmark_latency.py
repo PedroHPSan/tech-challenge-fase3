@@ -9,11 +9,12 @@ import time
 
 import httpx
 
-TEXTS = [
-    "chest pain",
-    "fever",
-    "ankle sprain",
-    "abdominal pain, acute",
+PATIENTS = [
+    {"text": "chest pain", "age": 58, "hr": 110, "sbp": 95, "saturation": 92, "mental": 1},
+    {"text": "fever", "age": 34, "bt": 38.6, "hr": 98, "rr": 20},
+    {"text": "ankle sprain", "age": 27, "injury": 2, "nrs_pain": 4},
+    {"text": "abdominal pain, acute", "age": 45, "nrs_pain": 7, "hr": 88},
+    {"text": "headache"},  # só texto, sem sinais
 ]
 
 
@@ -25,11 +26,11 @@ def main() -> None:
 
     times: list[float] = []
     with httpx.Client(base_url=args.url, timeout=10) as client:
-        for text in TEXTS * 3:  # aquecimento
-            client.post("/predict", json={"text": text})
+        for patient in PATIENTS * 3:  # aquecimento
+            client.post("/predict", json=patient)
         for i in range(args.n):
             start = time.perf_counter()
-            r = client.post("/predict", json={"text": TEXTS[i % len(TEXTS)]})
+            r = client.post("/predict", json=PATIENTS[i % len(PATIENTS)])
             r.raise_for_status()
             times.append((time.perf_counter() - start) * 1000)
 
