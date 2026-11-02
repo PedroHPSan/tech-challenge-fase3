@@ -16,3 +16,13 @@ def test_split_nao_vaza_frases(csv_path):
     train, test = split_by_text(df)
     assert set(train["text"]).isdisjoint(set(test["text"]))
     assert set(test["label"]) == set(df["label"])
+
+
+def test_load_dataset_ktas_mapeia_urgencia(tmp_path):
+    path = tmp_path / "ktas.csv"
+    path.write_bytes(
+        "Chief_complain;KTAS_expert;Outra\nChest Pain;2;x\nfever;3;x\nrash;5;x\n".encode("latin-1")
+    )
+    df = load_dataset(str(path))
+    assert list(df["text"]) == ["chest pain", "fever", "rash"]
+    assert list(df["label"]) == ["urgente", "atencao", "normal"]

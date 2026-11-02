@@ -5,10 +5,28 @@ import pandas as pd
 
 REQUIRED_COLUMNS = ("text", "label")
 
+# Dataset KTAS (pronto-socorro coreano): a queixa principal vira o texto e o nível
+# de triagem definido pelos especialistas (1-5) vira a classe de urgência.
+KTAS_TEXT_COLUMN = "Chief_complain"
+KTAS_LABEL_COLUMN = "KTAS_expert"
+KTAS_TO_URGENCY = {1: "urgente", 2: "urgente", 3: "atencao", 4: "normal", 5: "normal"}
+
+
+def _read_ktas(path: str) -> pd.DataFrame:
+    raw = pd.read_csv(
+        path, sep=";", encoding="latin-1", usecols=[KTAS_TEXT_COLUMN, KTAS_LABEL_COLUMN]
+    )
+    level = pd.to_numeric(raw[KTAS_LABEL_COLUMN], errors="coerce")
+    return pd.DataFrame(
+        {"text": raw[KTAS_TEXT_COLUMN].str.lower(), "label": level.map(KTAS_TO_URGENCY)}
+    )
+
 
 def load_dataset(path: str) -> pd.DataFrame:
-    """Lê o CSV, valida as colunas e remove linhas vazias."""
-    df = pd.read_csv(path)
+    """Lê o CSV (formato `text,label` ou o bruto KTAS), valida e remove linhas vazias."""
+    with open(path, encoding="latin-1") as f:
+        is_ktas = KTAS_TEXT_COLUMN in f.readline()
+    df = _read_ktas(path) if is_ktas else pd.read_csv(path)
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
         raise ValueError(f"Colunas ausentes no dataset: {missing}")
@@ -18,20 +36,23 @@ def load_dataset(path: str) -> pd.DataFrame:
 
 
 def split_by_text(
-    df: pd.DataFrame, texts_per_label: int = 1, seed: int = 42
+    df: pd.DataFrame, test_size: float = 0.2, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Separa treino e teste sem vazamento.
 
-    O dataset repete poucas frases muitas vezes. Um split aleatório colocaria a
-    mesma frase no treino e no teste e inflaria a métrica. Aqui, frases inteiras
-    (`texts_per_label` por classe) vão para o teste e nunca aparecem no treino.
+    A mesma queixa aparece em várias linhas (e às vezes com classes diferentes). Um
+    split aleatório colocaria a mesma queixa no treino e no teste e inflaria a
+    métrica. Aqui, queixas inteiras (`test_size` das únicas de cada classe, pela classe
+    mais frequente) vão para o teste e nunca aparecem no treino.
     """
     rng = np.random.default_rng(seed)
+    majority = df.groupby("text")["label"].agg(lambda s: s.value_counts().index[0])
     test_texts: list[str] = []
-    for _, group in df.groupby("label"):
-        unique = sorted(group["text"].unique())
-        if len(unique) <= texts_per_label:
+    for _, texts in majority.groupby(majority):
+        unique = sorted(texts.index)
+        if len(unique) < 2:
             raise ValueError("Poucas frases únicas por classe para separar um teste.")
-        test_texts.extend(rng.choice(unique, size=texts_per_label, replace=False))
+        n_test = min(len(unique) - 1, max(1, round(len(unique) * test_size)))
+        test_texts.extend(rng.choice(unique, size=n_test, replace=False))
     is_test = df["text"].isin(test_texts)
     return df[~is_test].reset_index(drop=True), df[is_test].reset_index(drop=True)
