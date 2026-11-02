@@ -23,7 +23,7 @@ from src.data import load_dataset, split_by_text
 def build_pipeline(model: str = "logreg", seed: int = 42) -> Pipeline:
     """Monta o pipeline TF-IDF + classificador."""
     if model == "logreg":
-        clf = LogisticRegression(max_iter=1000, random_state=seed)
+        clf = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=seed)
     elif model == "random_forest":
         clf = RandomForestClassifier(n_estimators=100, random_state=seed)
     else:
