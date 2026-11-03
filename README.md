@@ -207,6 +207,19 @@ poetry run airflow dags test retrain_text_classifier 2026-11-02 -S dags
 poetry run pytest tests/test_dag.py   # integridade da DAG (pulado sem Airflow)
 ```
 
+Execução verificada com Airflow 2.10.5 (`airflow dags test`, 2026-11-03): as duas tarefas
+terminam em `SUCCESS` e o `DagRun` fecha como concluído.
+
+```
+Marking task as SUCCESS. dag_id=retrain_text_classifier, task_id=ingest_data
+Marking task as SUCCESS. dag_id=retrain_text_classifier, task_id=train_model
+DagRun Finished: dag_id=retrain_text_classifier, ... state=success
+```
+
+Na primeira execução, o import da DAG (que carrega scikit-learn, skl2onnx e onnxruntime)
+pode passar do limite padrão de 30 s do Airflow e falhar com `DagBag import timeout`. Se
+acontecer, aumente com `export AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT=120`.
+
 ## Monitoramento (Prometheus + Grafana)
 
 A API usa `prometheus_client` e expõe as métricas em `/metrics`:
