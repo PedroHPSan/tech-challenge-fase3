@@ -1,6 +1,6 @@
 {
   "uid": "triagem-api",
-  "title": "Triagem de laudos — API",
+  "title": "Triagem de urgência — API",
   "schemaVersion": 39,
   "refresh": "5s",
   "time": {
