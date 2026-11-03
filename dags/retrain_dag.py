@@ -9,7 +9,7 @@ from src.pipeline import ingest, train
 
 with DAG(
     dag_id="retrain_text_classifier",
-    description="Carrega o CSV, treina o classificador TF-IDF e salva o modelo",
+    description="Carrega o CSV, treina o classificador (texto + sinais clínicos) e salva o modelo",
     start_date=datetime(2026, 1, 1),
     schedule="@weekly",
     catchup=False,
