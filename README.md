@@ -161,8 +161,8 @@ as requisições alternam pacientes com e sem sinais clínicos, após aqueciment
 | scikit-learn (baseline) | 3,23 ms | 3,08 ms | 4,15 ms |
 | ONNX Runtime | **1,13 ms** | **1,04 ms** | **1,70 ms** |
 
-Na API o ganho é de ~65% (cerca de 2,9x). Há variação entre rodadas: em quatro rodadas o
-scikit-learn ficou entre 3,06 e 3,82 ms e o ONNX entre 1,13 e 1,35 ms.
+Na API o ganho é de ~65% (cerca de 2,9x). Há variação entre rodadas: em cinco rodadas o
+scikit-learn ficou entre 3,06 e 3,82 ms e o ONNX entre 0,95 e 1,35 ms.
 
 **Só o modelo** (`poetry run python -m scripts.compare_latency --n 3000`, 1 paciente por
 chamada, entradas já montadas):
