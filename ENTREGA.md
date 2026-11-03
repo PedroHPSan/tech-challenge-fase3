@@ -27,7 +27,7 @@ Fonte: Moon et al., PLOS ONE 2019 (CC BY 4.0, [doi:10.1371/journal.pone.0216972]
 | F1 macro em queixas inéditas | 0,52 | **0,74** |
 | Validação cruzada agrupada | 0,55 | **0,68** |
 
-Comparamos 8 abordagens (README) e a regressão logística com texto + sinais foi a melhor.
+Comparamos 8 abordagens (docs/metodo.md) e a regressão logística com texto + sinais foi a melhor.
 A API continua exigindo só `text`; os sinais são opcionais e ausentes são imputados.
 
 ## Latência (MacBook, Docker, 2026-11-02)
