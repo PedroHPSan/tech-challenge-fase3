@@ -70,7 +70,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * sum(rate(http_requests_total{path=\"/predict\",status=~\"4..|5..\"}[1m])) / clamp_min(sum(rate(http_requests_total{path=\"/predict\"}[1m])), 1e-9)",
+          "expr": "100 * (sum(rate(http_requests_total{path=\"/predict\",status=~\"4..|5..\"}[1m])) or vector(0)) / clamp_min(sum(rate(http_requests_total{path=\"/predict\"}[1m])), 1e-9)",
           "legendFormat": ""
         }
       ]
