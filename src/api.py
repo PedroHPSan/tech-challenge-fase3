@@ -1,4 +1,4 @@
-"""API de inferência: recebe o texto do laudo e devolve a classificação."""
+"""API de inferência: recebe a queixa e os sinais do paciente e devolve a urgência."""
 
 import time
 from contextlib import asynccontextmanager
